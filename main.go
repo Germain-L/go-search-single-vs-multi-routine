@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sync"
 	"time"
 )
 
@@ -21,21 +23,26 @@ func getArgs() (dir string, search string, err error) {
 	return dir, search, nil
 }
 
-func explore(dirPath string, search *string) {
+func explore(dirPath string, search *string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	fmt.Println("searching in", dirPath)
+
 	dir, err := os.ReadDir(dirPath)
 	if err != nil {
 		fmt.Println("Could not read dir", dirPath)
 	}
 
 	for _, entry := range dir {
-		entrypath := dirPath + "/" + entry.Name()
+		entrypath := filepath.Join(dirPath, entry.Name())
 
 		if entry.Name() == *search {
 			fmt.Println("FOUND" + entrypath)
 		}
 
 		if entry.IsDir() {
-			explore(entrypath, search)
+			wg.Add(1)
+			go explore(entrypath, search, wg)
 		}
 	}
 }
@@ -48,9 +55,20 @@ func main() {
 		panic(err)
 	}
 
-	explore(dir, &search)
+	var wg sync.WaitGroup
+
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		panic("invalid starting directory")
+	}
+
+	go explore(dir, &search, &wg)
+	wg.Add(1)
+
+	go func() {
+		wg.Wait()
+	}()
 
 	elapsed := time.Since(start)
 	fmt.Printf("Elapsed time: %s\n", elapsed)
-
 }
